@@ -857,6 +857,34 @@ function TaskModalCM({ taskId, milestoneId, store, updateStore, onClose, milesto
     onClose();
   };
 
+  const moveToMilestone = (newMsId) => {
+    if (newMsId === milestoneId) return;
+    updateStore(s => {
+      if (taskId.startsWith("cust_")) {
+        const obj = (s.custom[milestoneId] || []).find(t => t.id === taskId);
+        if (obj) {
+          s.custom[milestoneId] = s.custom[milestoneId].filter(t => t.id !== taskId);
+          s.custom[newMsId] = [...(s.custom[newMsId] || []), obj];
+        }
+      } else {
+        const ov = s.tasks[taskId] || {};
+        const newId = `cust_${Date.now()}`;
+        s.tasks[taskId] = { ...ov, deleted: true };
+        s.custom[newMsId] = [...(s.custom[newMsId] || []), {
+          id: newId,
+          label: ov.label ?? task.label,
+          due: ov.due ?? task.due,
+          assignees: ov.assignees ?? task.assignees ?? [],
+        }];
+        if (ov.done || ov.comment) {
+          s.tasks[newId] = { done: !!ov.done, comment: ov.comment || "" };
+        }
+      }
+      return s;
+    });
+    onClose();
+  };
+
   return (
     <div onClick={onClose}
       style={{
@@ -937,6 +965,26 @@ function TaskModalCM({ taskId, milestoneId, store, updateStore, onClose, milesto
                 letterSpacing: -0.3,
               }}
             />
+          </div>
+
+          {/* Milestone */}
+          <div>
+            <ModalLabelCM>Milestone</ModalLabelCM>
+            <select value={milestoneId} onChange={e => moveToMilestone(e.target.value)}
+              style={{
+                fontSize: 13, padding: "8px 12px",
+                border: `1px solid ${C.border}`, borderRadius: 6,
+                fontFamily: "inherit",
+                background: "rgba(255,255,255,0.04)",
+                color: accent, colorScheme: "dark",
+                cursor: "pointer", outline: "none",
+              }}>
+              {(milestonesProp || MILESTONES).map(m => (
+                <option key={m.id} value={m.id} style={{ background: C.surfaceSolid, color: C.text }}>
+                  {m.title}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Due date */}
