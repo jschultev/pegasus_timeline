@@ -21,14 +21,17 @@ function saveLocal(s) {
 // ─── Firebase singletons ───────────────────────────────────────
 let _fb = null;     // { app, db, auth, doc, onSnapshot, setDoc, signIn, signOut, onAuthStateChanged }
 
+// Wrap dynamic imports so Babel-standalone doesn't transpile them to require()
+const _dynImport = new Function("u", "return import(u)");
+
 async function initFirebase() {
   if (_fb) return _fb;
   if (!window.FIREBASE_CONFIG || !window.ENABLE_FIREBASE) return null;
   try {
-    const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js");
-    const { getFirestore, doc, onSnapshot, setDoc } = await import("https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js");
+    const { initializeApp } = await _dynImport("https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js");
+    const { getFirestore, doc, onSnapshot, setDoc } = await _dynImport("https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js");
     const { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } =
-      await import("https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js");
+      await _dynImport("https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js");
     const app = initializeApp(window.FIREBASE_CONFIG);
     const db = getFirestore(app);
     const auth = getAuth(app);
