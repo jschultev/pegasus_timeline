@@ -19,29 +19,22 @@ function saveLocal(s) {
 }
 
 // ─── Firebase singletons ───────────────────────────────────────
-let _fb = null;     // { app, db, auth, doc, onSnapshot, setDoc, signIn, signOut, onAuthStateChanged }
-
-// Wrap dynamic imports so Babel-standalone doesn't transpile them to require()
-const _dynImport = new Function("u", "return import(u)");
+let _fb = null;     // { doc, onSnapshot, setDoc, signIn, signOut, onAuthStateChanged }
 
 async function initFirebase() {
   if (_fb) return _fb;
   if (!window.FIREBASE_CONFIG || !window.ENABLE_FIREBASE) return null;
   try {
-    const { initializeApp } = await _dynImport("https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js");
-    const { getFirestore, doc, onSnapshot, setDoc } = await _dynImport("https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js");
-    const { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } =
-      await _dynImport("https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js");
-    const app = initializeApp(window.FIREBASE_CONFIG);
-    const db = getFirestore(app);
-    const auth = getAuth(app);
+    if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
+    const auth = firebase.auth();
+    const docRef = firebase.firestore().collection("pegasus").doc("timeline");
     _fb = {
-      app, db, auth,
-      doc: doc(db, "pegasus", "timeline"),
-      onSnapshot, setDoc,
-      signIn: (email, pw) => signInWithEmailAndPassword(auth, email, pw),
-      signOut: () => signOut(auth),
-      onAuthStateChanged: (cb) => onAuthStateChanged(auth, cb),
+      doc: docRef,
+      onSnapshot: (ref, cb, errCb) => ref.onSnapshot(cb, errCb),
+      setDoc: (ref, data) => ref.set(data),
+      signIn: (email, pw) => auth.signInWithEmailAndPassword(email, pw),
+      signOut: () => auth.signOut(),
+      onAuthStateChanged: (cb) => auth.onAuthStateChanged(cb),
     };
     return _fb;
   } catch (e) {
@@ -118,7 +111,7 @@ function useStore(authUser) {
       fbRef.current = fb;
       setBackend("firebase");
       unsubRef.current = fb.onSnapshot(fb.doc, (snap) => {
-        if (snap.exists()) {
+        if (snap.exists) {
           const d = snap.data();
           setStore({ tasks: d.tasks || {}, custom: d.custom || {} });
         } else {
