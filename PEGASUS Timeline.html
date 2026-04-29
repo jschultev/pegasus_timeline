@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <title>PEGASUS Timeline</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; background: #0e0f13; font-family: 'Inter', system-ui, sans-serif; }
+    #root { height: 100%; }
+    * { box-sizing: border-box; }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="firebase-config.js"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="data.jsx"></script>
+  <script type="text/babel" src="store.jsx"></script>
+  <script type="text/babel" src="interactions.jsx"></script>
+  <script type="text/babel" src="login.jsx"></script>
+  <script type="text/babel" src="variant-modern.jsx"></script>
+
+  <script type="text/babel">
+    const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+      "showHints": true
+    }/*EDITMODE-END*/;
+
+    function App() {
+      const auth = useAuth();
+      const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+      const resetData = () => {
+        if (confirm("Alle Änderungen zurücksetzen? (Bei aktivem Sync betrifft das ALLE Nutzer.)")) {
+          localStorage.removeItem(STORE_KEY);
+          location.reload();
+        }
+      };
+
+      // Loading state
+      if (!auth.ready) {
+        return (
+          <div style={{
+            width: "100vw", height: "100vh", display: "flex",
+            alignItems: "center", justifyContent: "center",
+            background: "#0e0f13", color: "#5e6170",
+            fontFamily: "'JetBrains Mono', monospace", fontSize: 11, letterSpacing: 1.5,
+          }}>LOADING…</div>
+        );
+      }
+
+      // If Firebase enabled and no user → login screen
+      if (auth.enabled && !auth.user) {
+        return <LoginScreen onLogin={auth.login} error={auth.error} enabled={auth.enabled} />;
+      }
+
+      // If Firebase NOT enabled → run in local-only mode (still works for solo dev)
+      return (
+        <>
+          <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
+            <ModernTimeline user={auth.user} onLogout={auth.logout} />
+          </div>
+
+          <TweaksPanel title="Tweaks">
+            <TweakSection title="How to use">
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "#444", lineHeight: 1.7 }}>
+                <li><b>Click day card</b> → tasks for that day below</li>
+                <li><b>Click any task</b> → modal (assign / date / notes)</li>
+                <li><b>Scroll</b> = pan · <b>⌘/Ctrl + scroll</b> = zoom</li>
+                <li><b>Phase pills</b> oben → schnell zum Milestone springen</li>
+              </ul>
+            </TweakSection>
+            <TweakSection title="Sync">
+              <div style={{ fontSize: 12, color: "#444", lineHeight: 1.6 }}>
+                {auth.enabled
+                  ? <>Eingeloggt als <b>{auth.user?.email}</b>. Daten sind in Echtzeit mit allen Team-Mitgliedern geteilt.</>
+                  : <>Lokaler Modus. Aktiviere Firebase in <code>firebase-config.js</code> für Multi-User.</>}
+              </div>
+            </TweakSection>
+            <TweakSection title="Daten">
+              <TweakButton onClick={resetData}>Reset all changes</TweakButton>
+            </TweakSection>
+            <TweakSection title="Team">
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {TEAM.map(p => (
+                  <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                    <PersonChip person={p} size={20} />
+                    <span>{p.name}</span>
+                  </div>
+                ))}
+              </div>
+            </TweakSection>
+          </TweaksPanel>
+        </>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+
+  <template id="__bundler_thumbnail">
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <rect width="100" height="100" fill="#0e0f13"/>
+      <line x1="20" y1="50" x2="80" y2="50" stroke="#9ea1ad" stroke-width="1.5" stroke-dasharray="3 4"/>
+      <rect x="30" y="42" width="16" height="16" rx="3" fill="#1c1e26" stroke="#f97316"/>
+      <rect x="54" y="42" width="16" height="16" rx="3" fill="#1c1e26" stroke="#3b82f6"/>
+    </svg>
+  </template>
+</body>
+</html>
