@@ -27,7 +27,8 @@ function PersonChip({ person, size = 22, ring = false, onClick, title }) {
 }
 
 // Assignee picker popover
-function AssigneePicker({ assignees, onChange }) {
+function AssigneePicker({ assignees, onChange, team: teamProp }) {
+  const team = teamProp || TEAM;
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -42,7 +43,7 @@ function AssigneePicker({ assignees, onChange }) {
     onChange(next);
   };
 
-  const assigned = TEAM.filter(p => assignees.includes(p.id));
+  const assigned = team.filter(p => assignees.includes(p.id));
 
   return (
     <span ref={ref} style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -80,7 +81,7 @@ function AssigneePicker({ assignees, onChange }) {
           boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
           padding: 6, minWidth: 180,
         }}>
-          {TEAM.map(p => {
+          {team.map(p => {
             const on = assignees.includes(p.id);
             return (
               <div key={p.id} onClick={() => toggle(p.id)}

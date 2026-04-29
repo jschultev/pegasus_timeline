@@ -7,12 +7,21 @@
 const STORE_KEY = "pegasus_timeline_v1";
 
 // ─── localStorage backend ──────────────────────────────────────
+const STORE_DEFAULTS = () => ({
+  tasks: {}, custom: {},
+  customMilestones: [], milestoneOverrides: {}, deletedMilestones: [],
+  customTeam: [], teamOverrides: {}, deletedTeam: [],
+});
+
 function loadLocal() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    if (!raw) return { tasks: {}, custom: {} };
-    return JSON.parse(raw);
-  } catch (e) { return { tasks: {}, custom: {} }; }
+    if (!raw) return STORE_DEFAULTS();
+    const s = JSON.parse(raw);
+    const d = STORE_DEFAULTS();
+    for (const k of Object.keys(d)) { if (s[k] === undefined) s[k] = d[k]; }
+    return s;
+  } catch (e) { return STORE_DEFAULTS(); }
 }
 function saveLocal(s) {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(s)); } catch (e) {}
@@ -140,6 +149,23 @@ function useStore(authUser) {
   return [store, update];
 }
 
+// ─── Dynamic milestone / team helpers ─────────────────────────
+function getMilestones(store) {
+  const ov = store.milestoneOverrides || {};
+  const del = new Set(store.deletedMilestones || []);
+  const base = MILESTONES.filter(m => !del.has(m.id)).map(m => ({ ...m, ...(ov[m.id] || {}) }));
+  const custom = (store.customMilestones || []).filter(m => !del.has(m.id));
+  return [...base, ...custom].sort((a, b) => a.date < b.date ? -1 : 1);
+}
+
+function getTeam(store) {
+  const ov = store.teamOverrides || {};
+  const del = new Set(store.deletedTeam || []);
+  const base = TEAM.filter(p => !del.has(p.id)).map(p => ({ ...p, ...(ov[p.id] || {}) }));
+  const custom = (store.customTeam || []).filter(p => !del.has(p.id));
+  return [...base, ...custom];
+}
+
 // ─── Effective task data ──────────────────────────────────────
 function getTaskState(store, task) {
   const ov = store.tasks[task.id] || {};
@@ -159,7 +185,7 @@ function getMilestoneTasks(store, milestone) {
 }
 function getAllTasks(store) {
   const all = [];
-  for (const ms of MILESTONES) {
+  for (const ms of getMilestones(store)) {
     for (const t of getMilestoneTasks(store, ms)) {
       all.push({ ...t, ms });
     }
@@ -168,5 +194,5 @@ function getAllTasks(store) {
 }
 
 Object.assign(window, {
-  useAuth, useStore, getTaskState, getMilestoneTasks, getAllTasks, STORE_KEY,
+  useAuth, useStore, getTaskState, getMilestoneTasks, getAllTasks, getMilestones, getTeam, STORE_KEY,
 });

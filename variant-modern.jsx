@@ -29,17 +29,21 @@ function ModernTimeline({ user, onLogout }) {
   const [zoom, setZoom] = useStateCM(1);
   const [pan, setPan] = useStateCM(0);
   const [hoverDay, setHoverDay] = useStateCM(null);
+  const [adminOpen, setAdminOpen] = useStateCM(false);
+
+  const milestones = useMemoCM(() => getMilestones(store), [store]);
+  const team = useMemoCM(() => getTeam(store), [store]);
 
   // Range: extend a bit
   const range = useMemoCM(() => {
-    const dates = MILESTONES.map(m => parseDate(m.date))
-      .concat(MILESTONES.flatMap(m => m.tasks.map(t => parseDate(t.due))));
+    const dates = milestones.map(m => parseDate(m.date))
+      .concat(milestones.flatMap(m => (m.tasks || []).map(t => parseDate(t.due))));
     dates.push(parseDate(TODAY));
     const min = new Date(Math.min(...dates)); min.setDate(min.getDate() - 3);
     const max = new Date(Math.max(...dates)); max.setDate(max.getDate() + 3);
     const days = Math.round((max - min) / 86400000);
     return { min, max, days };
-  }, []);
+  }, [milestones]);
 
   const allDays = useMemoCM(() => {
     const arr = [];
@@ -53,7 +57,7 @@ function ModernTimeline({ user, onLogout }) {
 
   const tasksByDay = useMemoCM(() => {
     const map = {};
-    for (const ms of MILESTONES) {
+    for (const ms of milestones) {
       for (const task of getMilestoneTasks(store, ms)) {
         const st = getTaskState(store, task);
         if (!map[st.due]) map[st.due] = [];
@@ -61,13 +65,13 @@ function ModernTimeline({ user, onLogout }) {
       }
     }
     return map;
-  }, [store]);
+  }, [store, milestones]);
 
   const milestoneByDate = useMemoCM(() => {
     const m = {};
-    MILESTONES.forEach(ms => { m[ms.date] = ms; });
+    milestones.forEach(ms => { m[ms.date] = ms; });
     return m;
-  }, []);
+  }, [milestones]);
 
   // Card width scales with zoom; min 60 (collapsed), max 220 (expanded)
   const cardW = 70 + (zoom - 0.5) * 95;     // 0.5 → 70, 2 → 213
@@ -145,6 +149,8 @@ function ModernTimeline({ user, onLogout }) {
         scrollToToday={() => scrollToDay(TODAY)}
         scrollToDay={scrollToDay}
         backend={updateStore.backend || "local"}
+        milestones={milestones}
+        onAdmin={() => setAdminOpen(true)}
         user={user} onLogout={onLogout} />
 
       {/* Mini overview strip (heatmap) */}
@@ -183,6 +189,7 @@ function ModernTimeline({ user, onLogout }) {
               isToday={iso === TODAY}
               isHover={iso === hoverDay}
               zoom={zoom}
+              team={team}
               prevIso={i > 0 ? allDays[i-1] : null}
               onSelect={() => setSelectedDay(iso)}
               onHover={(h) => setHoverDay(h ? iso : null)}
@@ -200,6 +207,8 @@ function ModernTimeline({ user, onLogout }) {
         tasksOnDay={tasksByDay[selectedDay] || []}
         milestone={milestoneByDate[selectedDay]}
         store={store} updateStore={updateStore}
+        milestones={milestones}
+        team={team}
         setTaskModal={setTaskModal}
       />
 
@@ -207,7 +216,12 @@ function ModernTimeline({ user, onLogout }) {
       {taskModal && (
         <TaskModalCM taskId={taskModal.taskId} milestoneId={taskModal.milestoneId}
           store={store} updateStore={updateStore}
+          milestones={milestones}
+          team={team}
           onClose={() => setTaskModal(null)} />
+      )}
+      {adminOpen && (
+        <AdminModal store={store} updateStore={updateStore} onClose={() => setAdminOpen(false)} />
       )}
     </div>
   );
@@ -237,7 +251,7 @@ function BackdropBlobs() {
 }
 
 // ─── TOP BAR ─────────────────────────────────────────────────
-function TopBar({ zoom, setZoom, scrollToToday, scrollToDay, backend, user, onLogout }) {
+function TopBar({ zoom, setZoom, scrollToToday, scrollToDay, backend, user, onLogout, milestones, onAdmin }) {
   return (
     <div style={{
       padding: "16px 28px", display: "flex", alignItems: "center", gap: 18,
@@ -266,7 +280,7 @@ function TopBar({ zoom, setZoom, scrollToToday, scrollToDay, backend, user, onLo
 
       {/* Phase pills */}
       <div style={{ display: "flex", gap: 4, marginLeft: 24 }}>
-        {MILESTONES.map(m => {
+        {(milestones || MILESTONES).map(m => {
           return (
             <button key={m.id} onClick={() => scrollToDay(m.date)}
               style={{
@@ -337,6 +351,13 @@ function TopBar({ zoom, setZoom, scrollToToday, scrollToDay, backend, user, onLo
 
       {/* Controls */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <button onClick={onAdmin} title="Settings"
+          style={{
+            background: "transparent", border: `1px solid ${C.border}`,
+            color: C.text2, width: 32, height: 32, borderRadius: 6,
+            cursor: "pointer", fontSize: 15,
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+          }}>⚙</button>
         <button onClick={scrollToToday} style={{
           background: C.accent2 + "22", border: `1px solid ${C.accent2}`,
           color: C.accent2, fontSize: 11, fontWeight: 600,
@@ -463,7 +484,7 @@ function TodayGlow({ pan, dayToX }) {
 }
 
 // ─── DAY CARD ────────────────────────────────────────────────
-function DayCard({ iso, x, width, height, tasks, milestone, isSelected, isToday, isHover, zoom, onSelect, onHover, onTaskClick }) {
+function DayCard({ iso, x, width, height, tasks, milestone, isSelected, isToday, isHover, zoom, team, onSelect, onHover, onTaskClick }) {
   const d = parseDate(iso);
   const isWeekend = d.getDay() === 0 || d.getDay() === 6;
   const isMonday = d.getDay() === 1;
@@ -583,6 +604,7 @@ function DayCard({ iso, x, width, height, tasks, milestone, isSelected, isToday,
         {tasks.map(({ task, state, ms }) => (
           <TaskBadge key={task.id} task={task} state={state} ms={ms}
             compact={!showTaskLabels}
+            team={team}
             onClick={(e) => { e.stopPropagation(); onTaskClick(task.id, ms.id); }} />
         ))}
       </div>
@@ -591,10 +613,11 @@ function DayCard({ iso, x, width, height, tasks, milestone, isSelected, isToday,
 }
 
 // ─── TASK BADGE on a card ────────────────────────────────────
-function TaskBadge({ task, state, ms, compact, onClick }) {
+function TaskBadge({ task, state, ms, compact, onClick, team: teamProp }) {
   const [hover, setHover] = useStateCM(false);
   const accent = ms.tone === "warn" ? C.accent : C.text;
-  const assigned = TEAM.filter(p => state.assignees.includes(p.id));
+  const team = teamProp || TEAM;
+  const assigned = team.filter(p => state.assignees.includes(p.id));
 
   if (compact) {
     return (
@@ -664,14 +687,16 @@ function TaskBadge({ task, state, ms, compact, onClick }) {
 }
 
 // ─── BOTTOM DRAWER ───────────────────────────────────────────
-function BottomDrawer({ selectedDay, tasksOnDay, milestone, store, updateStore, setTaskModal }) {
+function BottomDrawer({ selectedDay, tasksOnDay, milestone, store, updateStore, setTaskModal, milestones: milestonesProp, team: teamProp }) {
+  const milestones = milestonesProp || MILESTONES;
+  const team = teamProp || TEAM;
   const [newLabel, setNewLabel] = useStateCM("");
   const accent = milestone ? (milestone.tone === "warn" ? C.accent : C.text) : C.accent2;
   const tog = (id) => updateStore(s => { s.tasks[id] = s.tasks[id] || {}; s.tasks[id].done = !s.tasks[id].done; return s; });
 
   const addToDay = () => {
     if (!newLabel.trim()) return;
-    const targetMs = milestone || MILESTONES.find(m => parseDate(m.date) >= parseDate(selectedDay)) || MILESTONES[MILESTONES.length-1];
+    const targetMs = milestone || milestones.find(m => parseDate(m.date) >= parseDate(selectedDay)) || milestones[milestones.length-1];
     updateStore(s => {
       s.custom[targetMs.id] = s.custom[targetMs.id] || [];
       s.custom[targetMs.id].push({
@@ -724,7 +749,7 @@ function BottomDrawer({ selectedDay, tasksOnDay, milestone, store, updateStore, 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 8 }}>
           {tasksOnDay.map(({ task, state, ms }) => {
             const msAccent = ms.tone === "warn" ? C.accent : C.text;
-            const assigned = TEAM.filter(p => state.assignees.includes(p.id));
+            const assigned = team.filter(p => state.assignees.includes(p.id));
             return (
               <div key={task.id}
                 onClick={() => setTaskModal({ taskId: task.id, milestoneId: ms.id })}
@@ -790,8 +815,9 @@ function BottomDrawer({ selectedDay, tasksOnDay, milestone, store, updateStore, 
 }
 
 // ─── TASK MODAL (modern, dark) ────────────────────────────────
-function TaskModalCM({ taskId, milestoneId, store, updateStore, onClose }) {
-  const ms = MILESTONES.find(m => m.id === milestoneId);
+function TaskModalCM({ taskId, milestoneId, store, updateStore, onClose, milestones: milestonesProp, team: teamProp }) {
+  const ms = (milestonesProp || MILESTONES).find(m => m.id === milestoneId);
+  const team = teamProp || TEAM;
   const allTasks = getMilestoneTasks(store, ms);
   const task = allTasks.find(t => t.id === taskId);
   if (!task || !ms) return null;
@@ -935,7 +961,7 @@ function TaskModalCM({ taskId, milestoneId, store, updateStore, onClose }) {
           <div>
             <ModalLabelCM>Assigned ({st.assignees.length})</ModalLabelCM>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {TEAM.map(p => {
+              {team.map(p => {
                 const on = st.assignees.includes(p.id);
                 return (
                   <button key={p.id} onClick={() => toggleAssignee(p.id)}
@@ -998,6 +1024,321 @@ function ModalLabelCM({ children }) {
       letterSpacing: 1.5, fontWeight: 700, textTransform: "uppercase",
       marginBottom: 8,
     }}>{children}</div>
+  );
+}
+
+// ─── ADMIN MODAL (Settings: Milestones + Team) ────────────────
+function AdminModal({ store, updateStore, onClose }) {
+  const [tab, setTab] = useStateCM("milestones");
+  const [editId, setEditId] = useStateCM(null);
+  const [draft, setDraft] = useStateCM({});
+
+  const milestones = getMilestones(store);
+  const team = getTeam(store);
+
+  useEffectCM(() => {
+    const h = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
+
+  const cancelEdit = () => setEditId(null);
+
+  // ─── Milestone handlers ───
+  const startEditMs = (ms) => { setEditId(ms.id); setDraft({ ...ms }); };
+
+  const saveMs = () => {
+    const isBase = MILESTONES.some(m => m.id === draft.id);
+    updateStore(s => {
+      if (isBase) {
+        s.milestoneOverrides = s.milestoneOverrides || {};
+        s.milestoneOverrides[draft.id] = { title: draft.title, short: draft.short, date: draft.date, color: draft.color, tone: draft.tone };
+      } else {
+        s.customMilestones = (s.customMilestones || []).map(m => m.id === draft.id ? { ...m, ...draft } : m);
+      }
+      return s;
+    });
+    setEditId(null);
+  };
+
+  const addMs = () => {
+    const id = `ms_${Date.now()}`;
+    const newMs = { id, title: "New Milestone", short: "NEW", date: TODAY, color: "#E8634A", tone: "warn", tasks: [] };
+    updateStore(s => { s.customMilestones = [...(s.customMilestones || []), newMs]; return s; });
+    setEditId(id); setDraft(newMs);
+  };
+
+  const delMs = (ms) => {
+    if (!confirm(`Delete "${ms.title}"?`)) return;
+    const isBase = MILESTONES.some(m => m.id === ms.id);
+    updateStore(s => {
+      if (isBase) {
+        s.deletedMilestones = [...(s.deletedMilestones || []), ms.id];
+      } else {
+        s.customMilestones = (s.customMilestones || []).filter(m => m.id !== ms.id);
+      }
+      return s;
+    });
+    if (editId === ms.id) setEditId(null);
+  };
+
+  // ─── Team handlers ───
+  const startEditPerson = (p) => { setEditId(p.id); setDraft({ ...p }); };
+
+  const savePerson = () => {
+    const isBase = TEAM.some(p => p.id === draft.id);
+    updateStore(s => {
+      if (isBase) {
+        s.teamOverrides = s.teamOverrides || {};
+        s.teamOverrides[draft.id] = { name: draft.name, color: draft.color };
+      } else {
+        s.customTeam = (s.customTeam || []).map(p => p.id === draft.id ? { ...p, ...draft } : p);
+      }
+      return s;
+    });
+    setEditId(null);
+  };
+
+  const addPerson = () => {
+    const id = `P${Math.random().toString(36).slice(2, 4).toUpperCase()}`;
+    const palette = ["#E8634A","#3B7BC9","#2EAF6E","#B85AC8","#E8A82C","#1FA9A0","#7059D6","#D04F87"];
+    const newP = { id, name: "New Person", color: palette[Math.floor(Math.random() * palette.length)] };
+    updateStore(s => { s.customTeam = [...(s.customTeam || []), newP]; return s; });
+    setEditId(id); setDraft(newP);
+  };
+
+  const delPerson = (p) => {
+    if (!confirm(`Remove "${p.name}" from the team?`)) return;
+    const isBase = TEAM.some(tp => tp.id === p.id);
+    updateStore(s => {
+      if (isBase) {
+        s.deletedTeam = [...(s.deletedTeam || []), p.id];
+      } else {
+        s.customTeam = (s.customTeam || []).filter(tp => tp.id !== p.id);
+      }
+      return s;
+    });
+    if (editId === p.id) setEditId(null);
+  };
+
+  const inp = (extra = {}) => ({
+    background: "rgba(255,255,255,0.06)", border: `1px solid ${C.border}`,
+    borderRadius: 5, padding: "5px 8px", color: C.text,
+    fontSize: 12, fontFamily: "inherit", outline: "none", ...extra,
+  });
+
+  const rowStyle = {
+    display: "flex", alignItems: "center", gap: 10,
+    padding: "8px 10px", borderRadius: 6,
+    background: "rgba(255,255,255,0.02)",
+  };
+
+  const editBox = {
+    background: "rgba(255,255,255,0.04)", border: `1px solid ${C.borderHi}`,
+    borderRadius: 8, padding: 14,
+  };
+
+  const actionBtn = (color = C.text2) => ({
+    background: "transparent", border: `1px solid ${C.border}`,
+    color, fontSize: 10, padding: "3px 8px", borderRadius: 4,
+    cursor: "pointer", fontFamily: "'JetBrains Mono', monospace", letterSpacing: 0.3,
+  });
+
+  const labelStyle = {
+    fontSize: 9, color: C.text3, fontFamily: "'JetBrains Mono', monospace",
+    letterSpacing: 1.2, marginBottom: 4,
+  };
+
+  return (
+    <div onClick={onClose} style={{
+      position: "absolute", inset: 0, zIndex: 2000,
+      background: "rgba(0,0,0,0.6)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      backdropFilter: "blur(6px)",
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        width: 580, maxHeight: "85vh",
+        background: `linear-gradient(180deg, ${C.surfaceHi}, ${C.surfaceSolid})`,
+        borderRadius: 14, border: `1px solid ${C.borderHi}`,
+        boxShadow: "0 24px 64px rgba(0,0,0,0.6)",
+        display: "flex", flexDirection: "column",
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: "16px 22px", borderBottom: `1px solid ${C.border}`,
+          display: "flex", alignItems: "center", gap: 12, flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: -0.2 }}>Settings</span>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} style={{
+            border: `1px solid ${C.border}`, background: "transparent",
+            color: C.text2, cursor: "pointer", width: 28, height: 28,
+            borderRadius: 6, fontSize: 14,
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+          }}>×</button>
+        </div>
+
+        {/* Tabs */}
+        <div style={{
+          display: "flex", padding: "0 22px",
+          borderBottom: `1px solid ${C.border}`, flexShrink: 0,
+        }}>
+          {["milestones", "team"].map(t => (
+            <button key={t} onClick={() => { setTab(t); setEditId(null); }}
+              style={{
+                background: "transparent", border: "none",
+                borderBottom: tab === t ? `2px solid ${C.accent}` : "2px solid transparent",
+                color: tab === t ? C.text : C.text2,
+                fontSize: 11, fontWeight: 600, cursor: "pointer",
+                padding: "10px 14px", fontFamily: "'JetBrains Mono', monospace",
+                letterSpacing: 1, textTransform: "uppercase", marginBottom: -1,
+              }}>
+              {t === "milestones" ? "Milestones" : "Team"}
+            </button>
+          ))}
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: "16px 22px", flex: 1, overflowY: "auto" }}>
+
+          {/* ── Milestones tab ── */}
+          {tab === "milestones" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {milestones.map(ms => (
+                <div key={ms.id}>
+                  {editId === ms.id ? (
+                    <div style={editBox}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                        <div>
+                          <div style={labelStyle}>TITLE</div>
+                          <input value={draft.title || ""} onChange={e => setDraft(d => ({ ...d, title: e.target.value }))}
+                            style={{ ...inp(), width: "100%", boxSizing: "border-box" }} />
+                        </div>
+                        <div>
+                          <div style={labelStyle}>SHORT NAME</div>
+                          <input value={draft.short || ""} onChange={e => setDraft(d => ({ ...d, short: e.target.value }))}
+                            style={{ ...inp(), width: "100%", boxSizing: "border-box" }} />
+                        </div>
+                        <div>
+                          <div style={labelStyle}>DATE</div>
+                          <input type="date" value={draft.date || ""} onChange={e => setDraft(d => ({ ...d, date: e.target.value }))}
+                            style={{ ...inp(), width: "100%", boxSizing: "border-box", colorScheme: "dark" }} />
+                        </div>
+                        <div>
+                          <div style={labelStyle}>COLOR & STYLE</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <input type="color" value={draft.color || "#E8634A"}
+                              onChange={e => setDraft(d => ({ ...d, color: e.target.value }))}
+                              style={{ width: 32, height: 28, border: "none", background: "transparent", cursor: "pointer", padding: 0, borderRadius: 4 }} />
+                            <button onClick={() => setDraft(d => ({ ...d, tone: d.tone === "warn" ? "neutral" : "warn" }))}
+                              style={{
+                                ...inp(), cursor: "pointer",
+                                color: draft.tone === "warn" ? C.accent : C.text2,
+                                borderColor: draft.tone === "warn" ? C.accent + "66" : C.border,
+                              }}>
+                              {draft.tone === "warn" ? "warn" : "neutral"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button onClick={saveMs} style={{
+                          background: C.accent, border: "none", color: "#fff",
+                          fontSize: 11, padding: "5px 14px", borderRadius: 5, cursor: "pointer",
+                          fontFamily: "'JetBrains Mono', monospace",
+                        }}>SAVE</button>
+                        <button onClick={cancelEdit} style={{ ...actionBtn(), padding: "5px 14px" }}>CANCEL</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={rowStyle}
+                      onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
+                      onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.02)"}>
+                      <div style={{
+                        width: 10, height: 10, borderRadius: "50%", background: ms.color, flexShrink: 0,
+                        boxShadow: ms.tone === "warn" ? `0 0 6px ${ms.color}88` : "none",
+                      }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{ms.title}</div>
+                        <div style={{ fontSize: 10, color: C.text3, fontFamily: "'JetBrains Mono', monospace" }}>
+                          {ms.short} · {fmtDate(ms.date)}
+                        </div>
+                      </div>
+                      <button onClick={() => startEditMs(ms)} style={actionBtn()}>EDIT</button>
+                      <button onClick={() => delMs(ms)} style={actionBtn("#f87171")}>DEL</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+              <button onClick={addMs} style={{
+                marginTop: 8, background: "transparent",
+                border: `1px dashed ${C.border}`, color: C.text2,
+                fontSize: 11, padding: "8px", borderRadius: 6, cursor: "pointer",
+                fontFamily: "'JetBrains Mono', monospace", width: "100%",
+              }}>+ ADD MILESTONE</button>
+            </div>
+          )}
+
+          {/* ── Team tab ── */}
+          {tab === "team" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {team.map(p => (
+                <div key={p.id}>
+                  {editId === p.id ? (
+                    <div style={editBox}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                        <div>
+                          <div style={labelStyle}>NAME</div>
+                          <input value={draft.name || ""} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
+                            style={{ ...inp(), width: "100%", boxSizing: "border-box" }} />
+                        </div>
+                        <div>
+                          <div style={labelStyle}>COLOR</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <input type="color" value={draft.color || "#666666"}
+                              onChange={e => setDraft(d => ({ ...d, color: e.target.value }))}
+                              style={{ width: 32, height: 28, border: "none", background: "transparent", cursor: "pointer", padding: 0 }} />
+                            <span style={{ fontSize: 11, color: C.text2, fontFamily: "'JetBrains Mono', monospace" }}>{draft.color}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button onClick={savePerson} style={{
+                          background: C.accent, border: "none", color: "#fff",
+                          fontSize: 11, padding: "5px 14px", borderRadius: 5, cursor: "pointer",
+                          fontFamily: "'JetBrains Mono', monospace",
+                        }}>SAVE</button>
+                        <button onClick={cancelEdit} style={{ ...actionBtn(), padding: "5px 14px" }}>CANCEL</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={rowStyle}
+                      onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
+                      onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.02)"}>
+                      <PersonChip person={p} size={28} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{p.name}</div>
+                        <div style={{ fontSize: 10, color: C.text3, fontFamily: "'JetBrains Mono', monospace" }}>{p.id}</div>
+                      </div>
+                      <div style={{ width: 14, height: 14, borderRadius: "50%", background: p.color, flexShrink: 0 }} />
+                      <button onClick={() => startEditPerson(p)} style={actionBtn()}>EDIT</button>
+                      <button onClick={() => delPerson(p)} style={actionBtn("#f87171")}>DEL</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+              <button onClick={addPerson} style={{
+                marginTop: 8, background: "transparent",
+                border: `1px dashed ${C.border}`, color: C.text2,
+                fontSize: 11, padding: "8px", borderRadius: 6, cursor: "pointer",
+                fontFamily: "'JetBrains Mono', monospace", width: "100%",
+              }}>+ ADD PERSON</button>
+            </div>
+          )}
+
+        </div>
+      </div>
+    </div>
   );
 }
 
