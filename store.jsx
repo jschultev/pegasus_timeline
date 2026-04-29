@@ -121,10 +121,9 @@ function useStore(authUser) {
       setBackend("firebase");
       unsubRef.current = fb.onSnapshot(fb.doc, (snap) => {
         if (snap.exists) {
-          const d = snap.data();
-          setStore({ tasks: d.tasks || {}, custom: d.custom || {} });
+          setStore({ ...STORE_DEFAULTS(), ...snap.data() });
         } else {
-          const seed = { tasks: {}, custom: {} };
+          const seed = STORE_DEFAULTS();
           fb.setDoc(fb.doc, seed).catch(console.error);
           setStore(seed);
         }
