@@ -111,7 +111,7 @@ const WEEK_MARKERS = [
   { date: "2026-06-15", label: "MO 15.06", note: "" },
 ];
 
-const TODAY = "2026-04-29";
+const TODAY = new Date().toISOString().slice(0, 10);
 
 // Date helpers
 const parseDate = (s) => new Date(s + "T00:00:00");

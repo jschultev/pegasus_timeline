@@ -497,7 +497,11 @@ function DayCard({ iso, x, width, height, tasks, milestone, isSelected, isToday,
   let bg = C.surface;
   let border = C.border;
   let shadow = "0 4px 16px rgba(0,0,0,0.25)";
-  if (hasMilestone) {
+  if (hasMilestone && isToday) {
+    bg = `linear-gradient(180deg, ${C.surfaceHi}, ${C.surfaceSolid})`;
+    border = milestone.tone === "warn" ? C.accent : C.text2;
+    shadow = `0 8px 28px rgba(0,0,0,0.4), 0 0 0 1px ${border}, 0 0 32px ${C.glow}, 0 0 0 4px ${C.accent2}55`;
+  } else if (hasMilestone) {
     bg = `linear-gradient(180deg, ${C.surfaceHi}, ${C.surfaceSolid})`;
     border = milestone.tone === "warn" ? C.accent : C.text2;
     shadow = `0 8px 28px rgba(0,0,0,0.4), 0 0 0 1px ${border}, 0 0 32px ${C.glow}`;
